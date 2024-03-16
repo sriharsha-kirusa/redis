@@ -1,4 +1,6 @@
 from flask import Flask, request, jsonify
+from flask_mail import Mail, Message
+import pyotp
 import redis
 
 # Initialize Flask app
@@ -6,6 +8,20 @@ app = Flask(__name__)
 
 # Initialize Redis client
 redis_client = redis.Redis(host='redis', port=6379)
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'maiid'
+app.config['MAIL_PASSWORD'] = 'password'
+
+mail = Mail(app)
+
+def generate_totp(secret_key):
+    totp = pyotp.TOTP(secret_key)
+    return totp.now()
+
+# Example usage
+secret_key = pyotp.random_base32()
 
 # Endpoint to generate a token
 @app.route('/generate_token', methods=['POST'])
@@ -59,7 +75,22 @@ def unblock_token():
     else:
         return jsonify({'error': 'Token not provided'}), 400
 
+@app.route("/sendmail", methods=['POST'])
+def send_email():
+    data = request.json  # Get JSON data from the request body
+    
+    subject = "KIRUSA FIT EMAIL VERIFICATION"
+    recipient = data.get('recipient')
 
+    if not all([subject, recipient]):
+        return "Missing required fields", 400
+
+    otp =  generate_totp(secret_key)
+
+    msg = Message(subject, sender='your_email@example.com', recipients=[recipient])
+    msg.body = f"Your One-Time Password (OTP) for Kirusa Fit is: {otp}"
+    mail.send(msg)
+    return jsonify({"otp": otp, "message": "Email sent with the OTP!"})
     
 # Run the Flask app
 if __name__ == '__main__':
